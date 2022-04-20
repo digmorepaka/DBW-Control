@@ -24,6 +24,11 @@
 * Improve UI, possibly integrate with TunerStudio
 * Code cleanup and optimization
 
+## Dependencies:
+* frankboesing/FastCRC
+* br3ttb/PID
+* greygnome/EnableInterrupt
+* robtillaart/MultiMap
 
 ## Hardware
 Currently testing with an Arduino UNO and a H bridge. H bridge is configured with a TC4424 driver and a NOT gate as to have a **single direction select pin, and a 5th enable/disable MOSFET**. TC4425/4428 is a better choice because it doesn't needan inverter due to it's mix of inverting/non inverting drivers. This is what I had on hand.
