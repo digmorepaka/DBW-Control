@@ -60,7 +60,7 @@ unsigned int FindMinAPP(int POT_PEDAL){
   return MinAPP;
 }
 
-bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2, int maxTPS2, int minAPP2, int maxAPP2, int restTPS, int throttleMode){
+bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2, int maxTPS2, int minAPP2, int maxAPP2, int restTPS, int throttleMode, int thirdPointAPP, int thirdPointTPS){
   FastCRC8 CRC8;
   
   Serial.print("MaxTPS = "); Serial.println(maxTPS);
@@ -87,15 +87,17 @@ bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2
   EEPROM.update(17,highByte(maxAPP2));
   EEPROM.update(18,lowByte(maxAPP2));
   EEPROM.update(19,throttleMode);
+  EEPROM.update(20,thirdPointAPP);
+  EEPROM.update(21,thirdPointTPS);
   Serial.println("All calibration values are saved");
 
-  uint8_t CRCbuf[19];
-  for (int i = 0; i < 20; i++){
+  uint8_t CRCbuf[21];
+  for (int i = 0; i < 22; i++){
     CRCbuf[i] = EEPROM.read(i);
     Serial.print("CRC buffer[");Serial.print(i);Serial.print("] = ");Serial.println(CRCbuf[i]);
     Serial.print("EEPROM[");Serial.print(i);Serial.print("] = ");Serial.println(EEPROM.read(i));
   }
-  EEPROM.update(20, CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
+  EEPROM.update(22, CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
   Serial.print("CRC value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
   return true; //to be used to set calibration flag
 }
@@ -123,6 +125,8 @@ bool clearCalibration(){
   EEPROM.update(17,0);
   EEPROM.update(18,0);
   EEPROM.update(19,0);
+  EEPROM.update(20,5);
+  EEPROM.update(21,5);
   Serial.println("Calibration Cleared");
   return false;
 }

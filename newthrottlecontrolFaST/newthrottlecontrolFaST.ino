@@ -1,9 +1,9 @@
 #include <FastCRC.h>
 #include <FastCRC_tables.h>
 #include <FastCRC_cpu.h>
-
+#include <MultiMap.h>
 #include <EnableInterrupt.h>
-
+#include <Arduino.h>
 #include <PID_v1.h>
 #include "ETC.h"
 
@@ -41,8 +41,8 @@ const int POT_IDLE = A4; //Requested Idle Input
 const byte idlePWMPin = 2;
 
 // Pins H bridge
-const byte HB_DIRECTION = 8; // H bridge Direction
-const byte HB_PWM = 11;     // H bridge PWM (speed)
+const byte HB_DIRECTION = 11; // H bridge Direction
+const byte HB_PWM = 10;     // H bridge PWM (speed)
 
 // Throttle constraints, max voltages in both direction
  int MinTPS;
@@ -53,7 +53,17 @@ const byte HB_PWM = 11;     // H bridge PWM (speed)
  int MaxAPP2 = 1023;
  int MinAPP = 0;
  int MinAPP2 = 0;
+ int inAPP = 0;
  unsigned int throttleRest;
+ int tpsPercent = 0;
+ int appPercent = 0;
+
+int tenthirdPointAPP;
+int tenthirdPointTPS;
+float thirdPointAPP = 0;
+float thirdPointTPS = 0;
+float appIn[] = {150, 700, 800};
+float appOut[] = {850, 400, 200};
 
 //PID Control variables
 double kP = 2.3;
@@ -99,13 +109,13 @@ void setup() {
   //idlePID.SetMode(AUTOMATIC);
   calFlag = EEPROM.read(8);
   if (calFlag){
-    uint8_t CRCbuf[19];
-    for (int i = 0; i < 20; i++){
+    uint8_t CRCbuf[21];
+    for (int i = 0; i < 22; i++){
       CRCbuf[i] = EEPROM.read(i);
     }
-    uint8_t CRCvalue = EEPROM.read(20);
+    uint8_t CRCvalue = EEPROM.read(22);
     Serial.print("CRC buffer value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
-    Serial.print("CRC value = "); Serial.println(EEPROM.read(20));
+    Serial.print("CRC value = "); Serial.println(EEPROM.read(22));
     if (CRCvalue == CRC8.smbus(CRCbuf, sizeof(CRCbuf))){
       loadCalibration();
       Serial.println("Calibration Loaded");
@@ -131,7 +141,24 @@ void loop() {
   //Read all inputs
     int inTPS = analogRead(POT_THROTTLE); //read for example 48, meaning throttle at rest, max is 758
     int rawAPP = analogRead(POT_PEDAL); //read for example 70, app is 0 (no demand), max is 940
-    int inAPP = map(rawAPP,MinAPP, MaxAPP, MinTPS, MaxTPS);
+   // int inAPP = map(rawAPP,MinAPP, MaxAPP, MinTPS, MaxTPS);
+  
+    int thirdAPP = MinAPP * thirdPointAPP;
+    int thirdTPS = MaxTPS * thirdPointTPS;
+    appIn[0] = MaxAPP;
+    appIn[1] = thirdAPP;
+    appIn[2] = MinAPP;
+    appOut[0] = MaxTPS;
+    appOut[1] = thirdTPS;
+    appOut[2] = MinTPS;
+    
+    float sampleSize = 3;;
+    
+    inAPP = multiMap<float>(rawAPP, appIn, appOut, sampleSize);
+    
+    appPercent = map(rawAPP, MinAPP, MaxAPP, 0, 100);
+    tpsPercent = map(inTPS, MinTPS, MaxTPS, 0, 100);
+
     idleSetPoint = 100 + dutyCyclein; //analogRead(POT_IDLE);
 
     
@@ -141,13 +168,13 @@ void loop() {
        break;
       case 1:
        if (inAPP < 300){
-        inAPP = map(inAPP, MinAPP, 300, MinAPP, 250);
+      //  inAPP = map(inAPP, MinAPP, 300, MinAPP, 250);
        }
        else if( (inAPP > 300) && (inAPP < 600)){
-        inAPP = map(inAPP, 300, 600, 250, 700);
+      //  inAPP = map(inAPP, 300, 600, 250, 700);
        }
        else{
-        inAPP = map(inAPP, 600, MaxAPP, 700, MaxAPP);
+      //  inAPP = map(inAPP, 600, MaxAPP, 700, MaxAPP);
        }
        break;
     }
@@ -206,7 +233,7 @@ void loop() {
         //if(safetyCount > 10){
         if ((safetyCount > 10) && (safetyCount <= 20)){
           //Serial.println("ETC SYSTEM ERROR!");
-          safetyMode = 1;
+        //  safetyMode = 1;
         }
         /*else if ((safetyCount > 20) && (safetyCount <= 30)){
          safetyMode = 2;
@@ -238,12 +265,16 @@ void loop() {
      
       
       if ((diagEnabled) && safetyMode == 0){
-        Serial.print("TPS % = "); Serial.println(inTPS);
-        Serial.print("Calibrated APP% = "); Serial.println(inAPP);
+        Serial.print("TPS = "); Serial.println(inTPS);
+        Serial.print("Raw APP% = "); Serial.println(appPercent);
+        Serial.print("Raw TPS% = "); Serial.println(tpsPercent);
+        //Serial.print("Calibrated Target% = "); Serial.println(inappPercent);
         Serial.print("State: "); Serial.println(state);
         Serial.print("Idle% = "); Serial.println(idleSetPoint);
         Serial.print("Input idle DC = ");Serial.println(dutyCyclein);
         Serial.print("PID Output = "); Serial.println(Output);
+        Serial.print("APP Map In = "); Serial.print(appIn[0]); Serial.print(" "); Serial.print(appIn[1]); Serial.print(" "); Serial.println(appIn[2]);
+        Serial.print("APP Map Out = "); Serial.print(appOut[0]); Serial.print(" "); Serial.print(appOut[1]); Serial.print(" "); Serial.println(appOut[2]);
       }
       //Serial.print("Idle% = "); Serial.println(idleSetPoint);
       timeDiag = millis();
@@ -308,8 +339,7 @@ void loop() {
         break;
         case 'i':
            // throttlePID.SetSampleTime(1);
-          SetPoint = idleSetPoint;
-          
+          SetPoint = 200;
           if (inTPS < idleSetPoint){
             throttlePID.SetTunings(1.1, .07, 0.0);
             throttlePID.SetControllerDirection(DIRECT);
@@ -406,31 +436,49 @@ void serialCommands(byte serialRead){
         MinAPP = FindMinAPP(POT_PEDAL);
         MinAPP2 = FindMinAPP(POT_PEDAL2);
         break;
-       case 3:
+      case 3:
         diagEnabled = !diagEnabled;
         break;
-       case 4:
-        calFlag = burnCalibration(MinTPS, MaxTPS, MinAPP, MaxAPP, MinTPS2, MaxTPS2, MinAPP2, MaxAPP2,throttleRest,throttleMode);
+      case 4:
+        calFlag = burnCalibration(MinTPS, MaxTPS, MinAPP, MaxAPP, MinTPS2, MaxTPS2, MinAPP2, MaxAPP2,throttleRest,throttleMode,tenthirdPointAPP,tenthirdPointTPS);
         break;
-       case 5:
+      case 5:
         calFlag = clearCalibration();
         break;
-       case 6:
+      case 6:
         throttleMode++;
         if (throttleMode > 1){ throttleMode = 0;}
         Serial.print("Throttlemode changed to = ");Serial.println(throttleMode);
         break;
-       case 7:
+      case 7:
         safetyMode = 0;
         break;
-       case 8:
-        uint8_t CRCbuf[19];
-        for (int i = 0; i < 20; i++){
+      case 8: 
+        Serial.setTimeout(2000);
+        Serial.println("Enter APP mid point calibration");
+        thirdPointAPP = Serial.parseFloat();
+        Serial.print("Entered calibration: "); Serial.println(thirdPointAPP);
+        delay(200);
+        Serial.println("Enter TPS mid point calibration");
+        thirdPointTPS = Serial.parseFloat();
+        Serial.print("Entered calibration: "); Serial.println(thirdPointTPS);
+        tenthirdPointAPP = thirdPointAPP * 100.0;
+        tenthirdPointTPS = thirdPointTPS * 100.0;
+        break;
+      case 9:
+        uint8_t CRCbuf[21];
+        for (int i = 0; i < 22; i++){
           CRCbuf[i] = EEPROM.read(i);
         }
         //uint8_t CRCvalue2 = EEPROM.read(20);
         Serial.print("CRC buffer value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
-        Serial.print("CRC value = "); Serial.println(EEPROM.read(20));
+        Serial.print("CRC value = "); Serial.println(EEPROM.read(22));
+        Serial.println(EEPROM.read(20));
+        Serial.println(EEPROM.read(21));
+        Serial.println(thirdPointAPP);
+        Serial.println(thirdPointTPS);
+        Serial.println(tenthirdPointAPP);
+        Serial.println(tenthirdPointTPS);
         break;
       default:
         break;
@@ -468,6 +516,9 @@ void loadCalibration(){
   low = EEPROM.read(18);
   MaxAPP2 = word(high,low);
   throttleMode = EEPROM.read(19);
+  thirdPointAPP = EEPROM.read(20) / 100.0;
+  thirdPointTPS = EEPROM.read(21) / 100.0;
+  
 }
 
 void idleRequestPWM(){
