@@ -47,10 +47,12 @@ const byte HB_PWM = 10;     // H bridge PWM (speed)
 // Throttle constraints, max voltages in both direction
  int MinTPS;
  int MinTPS2;
+ int HalfTPS2;
  int MaxTPS;
  int MaxTPS2;
  int MaxAPP = 1023;
  int MaxAPP2 = 1023;
+ int HalfAPP2;
  int MinAPP = 0;
  int MinAPP2 = 0;
  int inAPP = 0;
@@ -143,14 +145,14 @@ void loop() {
     int rawAPP = analogRead(POT_PEDAL); //read for example 70, app is 0 (no demand), max is 940
    // int inAPP = map(rawAPP,MinAPP, MaxAPP, MinTPS, MaxTPS);
   
-    int thirdAPP = MinAPP * thirdPointAPP;
+    int thirdAPP = MaxAPP * thirdPointAPP;
     int thirdTPS = MaxTPS * thirdPointTPS;
-    appIn[0] = MaxAPP;
-    appIn[1] = thirdAPP;
-    appIn[2] = MinAPP;
-    appOut[0] = MaxTPS;
-    appOut[1] = thirdTPS;
-    appOut[2] = MinTPS;
+    appIn[0] = MinAPP;
+    appIn[1] = thirdAPP + MinAPP;
+    appIn[2] = MaxAPP;
+    appOut[0] = MinTPS;
+    appOut[1] = thirdTPS + MinTPS;
+    appOut[2] = MaxTPS;
     
     float sampleSize = 3;;
     
@@ -451,7 +453,8 @@ void serialCommands(byte serialRead){
         Serial.print("Throttlemode changed to = ");Serial.println(throttleMode);
         break;
       case 7:
-        safetyMode = 0;
+        //find tps half point
+        
         break;
       case 8: 
         Serial.setTimeout(2000);
@@ -473,12 +476,6 @@ void serialCommands(byte serialRead){
         //uint8_t CRCvalue2 = EEPROM.read(20);
         Serial.print("CRC buffer value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
         Serial.print("CRC value = "); Serial.println(EEPROM.read(22));
-        Serial.println(EEPROM.read(20));
-        Serial.println(EEPROM.read(21));
-        Serial.println(thirdPointAPP);
-        Serial.println(thirdPointTPS);
-        Serial.println(tenthirdPointAPP);
-        Serial.println(tenthirdPointTPS);
         break;
       default:
         break;

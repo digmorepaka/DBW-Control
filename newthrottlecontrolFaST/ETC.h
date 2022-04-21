@@ -1,6 +1,7 @@
 #include <EEPROM.h>
 
 
+
 int FindMinTPS(int, int, int);
 int FindMaxTPS(int, int, int);
 unsigned int FindMinAPP(int);
@@ -19,6 +20,7 @@ int FindMinTPS(int HB_PWM, int HB_DIRECTION, int POT_THROTTLE){
   return MinTPSV;
   //closing
 }
+
 
 int FindMaxTPS(int HB_PWM, int HB_DIRECTION, int POT_THROTTLE){
   digitalWrite(HB_DIRECTION, 0);
