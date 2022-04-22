@@ -10,14 +10,13 @@
 * Configurable 3 point Non-linear APP to TPS relation
 * EEPROM intergrity checksum
 * Multiple throttle states(idle, transiet, stable, safety) to improve behavior
-* TPS and APP position sensor failure detection
+* Non-linear 3 point TPS and APP position sensor failure detection
 
 
 ## TODO:
-* Increase TPS vs APP configurable cell count
-* Non-Linear TPS1/TPS2 and APP1/APP2 failsafe correlation
-* Automatic TPS1/TPS2 and APP1/APP2 failsafe correlation detection
+* Automatic TPS1/TPS2 and APP1/APP2 failsafe correlation calibration
 * Failsafe mode that actually works
+* Increase TPS vs APP configurable cell count
 * Throttle smoothing/delay
 * Design HW
 * Get to understand parts of the code that I don't undestand :P
