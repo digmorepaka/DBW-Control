@@ -62,7 +62,7 @@ unsigned int FindMinAPP(int POT_PEDAL){
   return MinAPP;
 }
 
-bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2, int maxTPS2, int minAPP2, int maxAPP2, int restTPS, int throttleMode, int thirdPointAPP, int thirdPointTPS){
+bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2, int maxTPS2, int minAPP2, int maxAPP2, int restTPS, int throttleMode, int thirdPointAPP, int thirdPointTPS, int secondAPP2, int secondTPS2, int secondOutAPP2, int secondOutTPS2, int thirdAPP2, int thirdTPS2, int thirdOutAPP2, int thirdOutTPS2){
   FastCRC8 CRC8;
   
   Serial.print("MaxTPS = "); Serial.println(maxTPS);
@@ -91,15 +91,31 @@ bool burnCalibration(int minTPS, int maxTPS, int minAPP, int maxAPP, int minTPS2
   EEPROM.update(19,throttleMode);
   EEPROM.update(20,thirdPointAPP);
   EEPROM.update(21,thirdPointTPS);
+  EEPROM.update(22,highByte(secondAPP2));
+  EEPROM.update(23,lowByte(secondAPP2));
+  EEPROM.update(24,highByte(secondOutAPP2));
+  EEPROM.update(25,lowByte(secondOutAPP2));
+  EEPROM.update(26,highByte(secondTPS2));
+  EEPROM.update(27,lowByte(secondTPS2));
+  EEPROM.update(28,highByte(secondOutTPS2));
+  EEPROM.update(29,lowByte(secondOutTPS2));
+  EEPROM.update(30,highByte(thirdAPP2));
+  EEPROM.update(31,lowByte(thirdAPP2));
+  EEPROM.update(32,highByte(thirdOutAPP2));
+  EEPROM.update(33,lowByte(thirdOutAPP2));
+  EEPROM.update(34,highByte(thirdTPS2));
+  EEPROM.update(35,lowByte(thirdTPS2));
+  EEPROM.update(36,highByte(thirdOutTPS2));
+  EEPROM.update(37,lowByte(thirdOutTPS2));
   Serial.println("All calibration values are saved");
 
-  uint8_t CRCbuf[21];
-  for (int i = 0; i < 22; i++){
+  uint8_t CRCbuf[37];
+  for (int i = 0; i < 38; i++){
     CRCbuf[i] = EEPROM.read(i);
     Serial.print("CRC buffer[");Serial.print(i);Serial.print("] = ");Serial.println(CRCbuf[i]);
     Serial.print("EEPROM[");Serial.print(i);Serial.print("] = ");Serial.println(EEPROM.read(i));
   }
-  EEPROM.update(22, CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
+  EEPROM.update(38, CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
   Serial.print("CRC value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
   return true; //to be used to set calibration flag
 }
@@ -129,6 +145,22 @@ bool clearCalibration(){
   EEPROM.update(19,0);
   EEPROM.update(20,5);
   EEPROM.update(21,5);
+  EEPROM.update(22,0);
+  EEPROM.update(23,0);
+  EEPROM.update(24,0);
+  EEPROM.update(25,0);
+  EEPROM.update(26,0);
+  EEPROM.update(27,0);
+  EEPROM.update(28,0);
+  EEPROM.update(29,0);
+  EEPROM.update(30,0);
+  EEPROM.update(31,0);
+  EEPROM.update(32,0);
+  EEPROM.update(33,0);
+  EEPROM.update(34,0);
+  EEPROM.update(35,0);
+  EEPROM.update(36,0);
+  EEPROM.update(37,0);
   Serial.println("Calibration Cleared");
   return false;
 }

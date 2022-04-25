@@ -52,6 +52,8 @@ const byte HB_PWM = 10;     // H bridge PWM (speed)
  int MaxTPS2;
  int MaxAPP = 1023;
  int MaxAPP2 = 1023;
+
+
  int HalfAPP2;
  int MinAPP = 0;
  int MinAPP2 = 0;
@@ -62,8 +64,14 @@ const byte HB_PWM = 10;     // H bridge PWM (speed)
  int rawAPP2 = 0;
  int TPSerror = 0;
  int APPerror = 0;
- int correlationError = 0;
-
+ int secondAPP2 = 500;
+ int secondOutAPP2 = 650;
+ int secondTPS2 = 327;
+ int secondOutTPS2 = 691;
+ int thirdAPP2 = 562;
+ int thirdOutAPP2 = 715;
+ int thirdTPS2 = 602;
+ int thirdOutTPS2 = 1016;
 
  int tpsPercent = 0;
  int appPercent = 0;
@@ -124,8 +132,9 @@ PID throttlePID(&Input, &Output, &SetPoint, kP, kI, kD, DIRECT);
 //Operating States flag 
 char state = 's'; //s = safety, t = transient, i = idle, c = constant (steady state)
 
+
 void setup() {
-  // put your setup code here, to run once:
+// put your setup code here, to run once:
  //Enable PID control
  pinMode(3, OUTPUT);
  digitalWrite(3, HIGH);
@@ -136,13 +145,13 @@ void setup() {
   //idlePID.SetMode(AUTOMATIC);
   calFlag = EEPROM.read(8);
   if (calFlag){
-    uint8_t CRCbuf[21];
-    for (int i = 0; i < 22; i++){
+    uint8_t CRCbuf[37];
+    for (int i = 0; i < 38; i++){
       CRCbuf[i] = EEPROM.read(i);
     }
-    uint8_t CRCvalue = EEPROM.read(22);
+    uint8_t CRCvalue = EEPROM.read(38);
     Serial.print("CRC buffer value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
-    Serial.print("CRC value = "); Serial.println(EEPROM.read(22));
+    Serial.print("CRC value = "); Serial.println(EEPROM.read(38));
     if (CRCvalue == CRC8.smbus(CRCbuf, sizeof(CRCbuf))){
       loadCalibration();
       Serial.println("Calibration Loaded");
@@ -169,7 +178,6 @@ void loop() {
   //Read all inputs
     int inTPS = analogRead(POT_THROTTLE); //read for example 48, meaning throttle at rest, max is 758
     int rawAPP = analogRead(POT_PEDAL); //read for example 70, app is 0 (no demand), max is 940
-   // int inAPP = map(rawAPP,MinAPP, MaxAPP, MinTPS, MaxTPS);
   
     int thirdAPP = MaxAPP * thirdPointAPP;
     int thirdTPS = MaxTPS * thirdPointTPS;
@@ -179,75 +187,46 @@ void loop() {
     appOut[0] = MinTPS;
     appOut[1] = thirdTPS + MinTPS;
     appOut[2] = MaxTPS;
-    
-    /*
-    thirdpPointAPPsafety = MaxAPP * 0.5;
-    thirdpPointAPP2safety = MaxAPP2 * 0.5;
-    thirdpPointTPSsafety = MaxTPS * 0.5;
-    thirdpPointTPS2safety = MaxTPS2 * 0.5;*/
+    float sampleSize = 3;
 
+    
     app2In[0] = MinAPP;
-    app2In[1] = 500; //562
-    app2In[2] = 562;
-    app2In[3] = 865;
+    app2In[1] = secondAPP2; //500
+    app2In[2] = thirdAPP2; //562
+    app2In[3] = 865; //865
     app2Out[0] = MinAPP2;
-    app2Out[1] = 650; //715
-    app2Out[2] = 715;
+    app2Out[1] = secondOutAPP2; //650
+    app2Out[2] = thirdOutAPP2; //715
     app2Out[3] = MaxAPP2;
 
     tps2In[0] = MinTPS; //138
-    tps2In[1] = 327;
-    tps2In[2] = 602;
+    tps2In[1] = secondTPS2;  //327
+    tps2In[2] = thirdTPS2;  //602
     tps2In[3] = MaxTPS; //890
     tps2Out[0] = MinTPS2; //455
-    tps2Out[1] = 691;
-    tps2Out[2] = 1016;
+    tps2Out[1] = secondOutTPS2; //691
+    tps2Out[2] = thirdOutTPS2;  //1016
     tps2Out[3] = MaxTPS2; //1019
+    float safeSampleSize = 4;
 
-
-    float sampleSize = 3;
-    
-    inAPP = multiMap<float>(rawAPP, appIn, appOut, sampleSize);
-    
     appPercent = map(rawAPP, MinAPP, MaxAPP, 0, 100);
     tpsPercent = map(inTPS, MinTPS, MaxTPS, 0, 100);
 
     idleSetPoint = 100 + dutyCyclein; //analogRead(POT_IDLE);
-
-    
     
     switch(throttleMode){
       case 0:
+       inAPP = multiMap<float>(rawAPP, appIn, appOut, sampleSize);
        break;
       case 1:
-       if (inAPP < 300){
-      //  inAPP = map(inAPP, MinAPP, 300, MinAPP, 250);
-       }
-       else if( (inAPP > 300) && (inAPP < 600)){
-      //  inAPP = map(inAPP, 300, 600, 250, 700);
-       }
-       else{
-      //  inAPP = map(inAPP, 600, MaxAPP, 700, MaxAPP);
-       }
+       inAPP = map(rawAPP, MinAPP, MaxAPP, MinTPS, MaxTPS * 0.5);
        break;
     }
-
-   /* if (abs(inTPS - inAPP) < 70){
-      state = 'c'; //Sets to steady state
-    }
-    else if (abs(inTPS - inAPP) >= 70){
-      //Serial.println(inTPS -inAPP);
-      state = 't';  //sets to transient mode
-    }
-    if ((rawAPP <= MinAPP + 3)){
-      state = 'i';  //sets idle mode
-      idleSetPoint = 100 + dutyCyclein; //analogRead(POT_IDLE);
-    }*/
 
     if (inAPP <= idleSetPoint){
       state = 'i';  //sets idle mode
     }
-     else if (inAPP > idleSetPoint){
+    else if (inAPP > idleSetPoint){
       state = 'c'; //Sets to steady state
     }
     if (abs(inTPS - inAPP) >= 60){
@@ -255,30 +234,23 @@ void loop() {
       state = 't';  //sets to transient mode
     }
     if (safetyMode > 0){
-      //state = 's';
+      state = 's';
     }
 
     if (((millis() % 200) == 0) && (safetyCheck == true)){
         rawTPS2 = analogRead(POT_THROTTLE2);
         rawAPP2 = analogRead(POT_PEDAL2);
-        //expectTPS2 = map(inTPS, MinTPS, MaxTPS, MinTPS2, MaxTPS2); //output is the expected APP2 value is at what APP1
-        //expectAPP2 = map(rawAPP, MinAPP, MaxAPP, MinAPP2, MaxAPP2);  //output is the expected TPS2 value is at what TPS1
-        float safeSampleSize = 4;
-
-        digitalWrite(3, safetyMode);
         expectAPP2 = multiMap<float>(rawAPP, app2In, app2Out, safeSampleSize);
         expectTPS2 = multiMap<float>(inTPS, tps2In, tps2Out, safeSampleSize);
-
         TPSerror = abs(expectTPS2-rawTPS2);
         APPerror = abs(expectAPP2-rawAPP2);
-        correlationError = 0;
+        
+        digitalWrite(3, safetyMode);
+
         if (state == 'i'){
-           //correlationError = abs(inTPS - idleSetPoint);
            TPSerror = 0;
         }
-        else{ correlationError = abs(inTPS - inAPP);}
-
-        if ((TPSerror > 10) || (APPerror > 10) || (correlationError > 65)){
+        if ((TPSerror > 10) || (APPerror > 10)){
           safetyCount++;
         }
         else if (safetyCount != 0){
@@ -288,11 +260,13 @@ void loop() {
           state = 'i';
           safetyCheck = true;
           safetyMode = 0;
+          throttleMode = 0;
         }
-        //if(safetyCount > 10){
-        if ((safetyCount > 10) && (safetyCount <= 20)){
+        if(safetyCount > 10){
+        //if ((safetyCount > 10) && (safetyCount <= 20)){
           //Serial.println("ETC SYSTEM ERROR!");
           safetyMode = 1;
+          throttleMode = 1;
         }
         /*else if ((safetyCount > 20) && (safetyCount <= 30)){
          safetyMode = 2;
@@ -312,22 +286,51 @@ void loop() {
           Serial.print("APP = "); Serial.println(rawAPP);
           Serial.print("Expected APP2  = "); Serial.println(expectAPP2);
           Serial.print("APP2 = "); Serial.println(rawAPP2);
-          Serial.print("correlationError = "); Serial.println(correlationError);
           Serial.print("safetyCount = "); Serial.println(safetyCount);
           Serial.print("safetyMode = "); Serial.println(safetyMode);
-         /* Serial.print("MaxTPS % = "); Serial.println(MaxTPS);
+          Serial.print(app2In[0]);
+          Serial.print(" ");
+          Serial.print(app2In[1]);
+          Serial.print(" ");
+          Serial.print(app2In[2]);
+          Serial.print(" ");
+          Serial.print(app2In[3]);
+          Serial.println(" ");
+          Serial.print(app2Out[0]);
+          Serial.print(" ");
+          Serial.print(app2Out[1]);
+          Serial.print(" ");
+          Serial.print(app2Out[2]);
+          Serial.print(" ");
+          Serial.print(app2Out[3]);
+          Serial.println(" ");
+          Serial.print(tps2In[0]);
+          Serial.print(" ");
+          Serial.print(tps2In[1]);
+          Serial.print(" ");
+          Serial.print(tps2In[2]);
+          Serial.print(" ");
+          Serial.print(tps2In[3]);
+          Serial.println(" ");
+          Serial.print(tps2Out[0]);
+          Serial.print(" ");
+          Serial.print(tps2Out[1]);
+          Serial.print(" ");
+          Serial.print(tps2Out[2]);
+          Serial.print(" ");
+          Serial.print(tps2Out[3]);
+          Serial.println(" ");
+          
+          /*Serial.print("MaxTPS % = "); Serial.println(MaxTPS);
           Serial.print("MinTPS % = "); Serial.println(MinTPS);
           Serial.print("MaxTPS2 % = "); Serial.println(MaxTPS2);
-          Serial.print("MinTPS2 % = "); Serial.println(MinTPS2);*/
-         // Serial.print("APPerror = "); Serial.println(APPerror);
+          Serial.print("MinTPS2 % = "); Serial.println(MinTPS2);
+          Serial.print("APPerror = "); Serial.println(APPerror);*/
           
         }
     }
     else if((millis() % 200) != 0) { safetyCheck = true;}
-    
      if ((millis() - timeDiag) > 600){
-     
-      
       if ((diagEnabled) && safetyMode == 0){
         /*Serial.print("TPS = "); Serial.println(inTPS);
         Serial.print("Raw APP% = "); Serial.println(appPercent);
@@ -347,17 +350,46 @@ void loop() {
         Serial.print("APP = "); Serial.println(rawAPP);
         Serial.print("Expected APP2  = "); Serial.println(expectAPP2);
         Serial.print("APP2 = "); Serial.println(rawAPP2);
-        Serial.print("correlationError = "); Serial.println(correlationError);
         Serial.print("safetyCount = "); Serial.println(safetyCount);
         Serial.print("safetyMode = "); Serial.println(safetyMode);
+        Serial.print(app2In[0]);
+          Serial.print(" ");
+          Serial.print(app2In[1]);
+          Serial.print(" ");
+          Serial.print(app2In[2]);
+          Serial.print(" ");
+          Serial.print(app2In[3]);
+          Serial.println(" ");
+          Serial.print(app2Out[0]);
+          Serial.print(" ");
+          Serial.print(app2Out[1]);
+          Serial.print(" ");
+          Serial.print(app2Out[2]);
+          Serial.print(" ");
+          Serial.print(app2Out[3]);
+          Serial.println(" ");
+          Serial.print(tps2In[0]);
+          Serial.print(" ");
+          Serial.print(tps2In[1]);
+          Serial.print(" ");
+          Serial.print(tps2In[2]);
+          Serial.print(" ");
+          Serial.print(tps2In[3]);
+          Serial.println(" ");
+          Serial.print(tps2Out[0]);
+          Serial.print(" ");
+          Serial.print(tps2Out[1]);
+          Serial.print(" ");
+          Serial.print(tps2Out[2]);
+          Serial.print(" ");
+          Serial.print(tps2Out[3]);
+          Serial.println(" ");
       }
       //Serial.print("Idle% = "); Serial.println(idleSetPoint);
       timeDiag = millis();
     }
     
-   /* if (inAPP > MaxAPP -15){
-      state = 'c'; //WOT mode
-    }*/
+   
     //convert inputs to doubles
     Input = inTPS;
     SetPoint = inAPP;
@@ -414,7 +446,7 @@ void loop() {
         break;
         case 'i':
            // throttlePID.SetSampleTime(1);
-          /*SetPoint = 200;
+          SetPoint = idleSetPoint;
           if (inTPS < idleSetPoint){
             throttlePID.SetTunings(1.1, .07, 0.0);
             throttlePID.SetControllerDirection(DIRECT);
@@ -430,9 +462,7 @@ void loop() {
            throttlePID.SetControllerDirection(REVERSE);
            throttlePID.SetOutputLimits(20,120);
            throttlePID.Compute();   */
-           
-           
-           /*if (abs(inTPS - idleSetPoint) < 5){
+           if (abs(inTPS - idleSetPoint) < 5){
             analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
             //Serial.println("Idle backslow");
            }
@@ -441,9 +471,9 @@ void loop() {
             //Serial.println("Idle back");
            }
            //Serial.println("Idle closing");
-         //  Serial.println(Output);
-         throttlePID.Compute();
-          }*/
+           //Serial.println(Output);
+          throttlePID.Compute();
+          }
         //Serial.println("Idle control");
         break;
         case 's': // safetymodes
@@ -517,7 +547,7 @@ void serialCommands(byte serialRead){
         diagEnabled = !diagEnabled;
         break;
       case 4:
-        calFlag = burnCalibration(MinTPS, MaxTPS, MinAPP, MaxAPP, MinTPS2, MaxTPS2, MinAPP2, MaxAPP2,throttleRest,throttleMode,tenthirdPointAPP,tenthirdPointTPS);
+        calFlag = burnCalibration(MinTPS, MaxTPS, MinAPP, MaxAPP, MinTPS2, MaxTPS2, MinAPP2, MaxAPP2,throttleRest,throttleMode,tenthirdPointAPP,tenthirdPointTPS, secondAPP2, secondTPS2, secondOutAPP2, secondOutTPS2, thirdAPP2, thirdTPS2, thirdOutAPP2, thirdOutTPS2);
         break;
       case 5:
         calFlag = clearCalibration();
@@ -528,8 +558,24 @@ void serialCommands(byte serialRead){
         Serial.print("Throttlemode changed to = ");Serial.println(throttleMode);
         break;
       case 7:
-        //find tps half point
-        
+        Serial.setTimeout(2500);
+        Serial.println("Enter APP1 second source point calibration");
+        secondAPP2 = Serial.parseInt();
+        Serial.println("Enter APP2 second target point calibration");
+        secondOutAPP2 = Serial.parseInt();
+        Serial.println("Enter TPS1 second source point calibration");
+        secondTPS2 = Serial.parseInt();
+        Serial.println("Enter TPS2 second target point calibration");
+        secondOutTPS2 = Serial.parseInt();
+        Serial.println("Enter APP1 third source point calibration");
+        thirdAPP2 = Serial.parseInt();
+        Serial.println("Enter APP2 third target point calibration");
+        thirdOutAPP2 = Serial.parseInt();
+        Serial.println("Enter TPS1 third source point calibration");
+        thirdTPS2 = Serial.parseInt();
+        Serial.println("Enter TPS2 third target point calibration");
+        thirdOutTPS2 = Serial.parseInt();
+
         break;
       case 8: 
         Serial.setTimeout(2000);
@@ -544,13 +590,13 @@ void serialCommands(byte serialRead){
         tenthirdPointTPS = thirdPointTPS * 100.0;
         break;
       case 9:
-        uint8_t CRCbuf[21];
-        for (int i = 0; i < 22; i++){
+        uint8_t CRCbuf[37];
+        for (int i = 0; i < 38; i++){
           CRCbuf[i] = EEPROM.read(i);
         }
         //uint8_t CRCvalue2 = EEPROM.read(20);
         Serial.print("CRC buffer value = "); Serial.println(CRC8.smbus(CRCbuf, sizeof(CRCbuf)));
-        Serial.print("CRC value = "); Serial.println(EEPROM.read(22));
+        Serial.print("CRC value = "); Serial.println(EEPROM.read(38));
         break;
       default:
         break;
@@ -590,7 +636,30 @@ void loadCalibration(){
   throttleMode = EEPROM.read(19);
   thirdPointAPP = EEPROM.read(20) / 100.0;
   thirdPointTPS = EEPROM.read(21) / 100.0;
-  
+  high = EEPROM.read(22);
+  low = EEPROM.read(23);
+  secondAPP2 = word(high,low);
+  high = EEPROM.read(24);
+  low = EEPROM.read(25);
+  secondOutAPP2 = word(high,low);
+  high = EEPROM.read(26);
+  low = EEPROM.read(27);
+  secondTPS2 = word(high,low);
+  high = EEPROM.read(28);
+  low = EEPROM.read(29);
+  secondOutTPS2 = word(high,low);
+  high = EEPROM.read(30);
+  low = EEPROM.read(31);
+  thirdAPP2 = word(high,low);
+  high = EEPROM.read(32);
+  low = EEPROM.read(33);
+  thirdOutAPP2 = word(high,low);
+  high = EEPROM.read(34);
+  low = EEPROM.read(35);
+  thirdTPS2 = word(high,low);
+  high = EEPROM.read(36);
+  low = EEPROM.read(37);
+  thirdOutTPS2 = word(high,low);
 }
 
 void idleRequestPWM(){
