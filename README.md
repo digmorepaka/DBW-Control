@@ -9,16 +9,16 @@
 * Configurable TPS and APP calibration, stored in local EEPROM
 * Configurable 3 point Non-linear APP to TPS relation
 * EEPROM intergrity checksum
-* Multiple throttle states(idle, transiet, stable, safety) to improve behavior
+* Multiple throttle states(idle, transient, stable, safety) to improve behavior
 * Non-linear 3 point TPS and APP position sensor failure detection
+* Safety mode
 
 
 ## TODO:
+* Design HW
 * Automatic TPS1/TPS2 and APP1/APP2 failsafe correlation calibration
-* Failsafe mode that actually works
 * Increase TPS vs APP configurable cell count
 * Throttle smoothing/delay
-* Design HW
 * Get to understand parts of the code that I don't undestand :P
 * Improve UI, possibly integrate with TunerStudio
 * Code cleanup and optimization
