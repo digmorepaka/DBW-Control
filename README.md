@@ -11,6 +11,7 @@
 * EEPROM intergrity checksum
 * Multiple throttle states(idle, transient, stable, safety) to improve behavior
 * Non-linear 3 point TPS and APP position sensor failure detection
+* Semi-automatic failsafe correlation calibration
 * Safety mode
 
 
