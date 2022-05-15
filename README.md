@@ -19,6 +19,7 @@
 * (Off)road test
 * Automatic TPS1/TPS2 and APP1/APP2 failsafe correlation calibration
 * Increase TPS vs APP configurable cell count
+* Voltage compensation
 * Improve HW
 * Throttle smoothing/delay
 * Get to understand parts of the code that I don't undestand :P
