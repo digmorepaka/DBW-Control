@@ -29,7 +29,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 void loadCalibration();
-void idleRequestPWM();
 void serialRead(byte);
 
 // Inputs
@@ -38,7 +37,7 @@ const int POT_THROTTLE2 = A1; // Servo Position Input2
 const int POT_PEDAL = A3; // Pedal Sensor Input
 const int POT_PEDAL2 = A2; // Pedal Sensor Input
 const int POT_IDLE = A4; //Requested Idle Input
-const byte idlePWMPin = 2;
+
 
 // Pins H bridge
 const byte HB_DIRECTION = 11; // H bridge Direction
@@ -66,6 +65,8 @@ const byte HB_PWM = 10;     // H bridge PWM (speed)
  float calVal2 = 0.00;
  int calSuccessCount = 0;
  int calSuccessCountSec = 0;
+ int lastTPS2Read = 0;
+ int maxTPS2Read = 0;
  int rawTPS2 = 0;
  int rawAPP2 = 0;
  int TPSerror = 0;
@@ -85,7 +86,6 @@ const byte HB_PWM = 10;     // H bridge PWM (speed)
  int expectAPP2 = 0;
  int expectTPS2 = 0;
  
-
 int tenthirdPointAPP;
 int tenthirdPointTPS;
 float thirdpPointAPPsafety = 0;
@@ -118,10 +118,7 @@ unsigned long timeDiag = 500;
 bool diagEnabled = false;
 bool calFlag = 0;
 int throttleCorr = 0;
-byte idleSetPoint = 0;
-unsigned long idlePWMtime = 0;
-bool idleCount = true;
-byte dutyCyclein = 0;
+int idleSetPoint = 0;
 byte throttleMode = 0;
 bool safetyCheck = true;
 byte safetyCount = 0;
@@ -137,6 +134,7 @@ PID throttlePID(&Input, &Output, &SetPoint, kP, kI, kD, DIRECT);
 
 //Operating States flag 
 char state = 's'; //s = safety, t = transient, i = idle, c = constant (steady state)
+
 
 
 void setup() {
@@ -170,7 +168,6 @@ void setup() {
     
   }
   pinMode(HB_DIRECTION, OUTPUT);
-  enableInterrupt(idlePWMPin, idleRequestPWM, CHANGE);
   
 }
 
@@ -218,7 +215,7 @@ void loop() {
     appPercent = map(rawAPP, MinAPP, MaxAPP, 0, 100);
     tpsPercent = map(inTPS, MinTPS, MaxTPS, 0, 100);
 
-    idleSetPoint = 100 + dutyCyclein; //analogRead(POT_IDLE);
+    idleSetPoint = map(analogRead(POT_IDLE), 0, 835, 0, 250);
     
     switch(throttleMode){
       case 0:
@@ -243,7 +240,7 @@ void loop() {
       if (safetyMode > 0){
         state = 's';
       }
-    } else if(calMode == 1 || calMode == 2) {
+    } else if(calMode > 0) { 
       state = 'k';
       safetyMode = 0;
       safetyCount = 0;
@@ -344,17 +341,17 @@ void loop() {
     else if((millis() % 200) != 0) { safetyCheck = true;}
      if ((millis() - timeDiag) > 600){
       if ((diagEnabled) && safetyMode == 0){
-        /*Serial.print("TPS = "); Serial.println(inTPS);
+        //Serial.print("TPS = "); Serial.println(inTPS);
         Serial.print("Raw APP% = "); Serial.println(appPercent);
         Serial.print("Raw TPS% = "); Serial.println(tpsPercent);
         //Serial.print("Calibrated Target% = "); Serial.println(inappPercent);
         Serial.print("State: "); Serial.println(state);
-        Serial.print("Idle% = "); Serial.println(idleSetPoint);
-        Serial.print("Input idle DC = ");Serial.println(dutyCyclein);
+        Serial.print("Idle = "); Serial.println(idleSetPoint);
+        Serial.print("Input idle DC = ");Serial.println(analogRead(POT_IDLE));
         Serial.print("PID Output = "); Serial.println(Output);
-        Serial.print("APP Map In = "); Serial.print(appIn[0]); Serial.print(" "); Serial.print(appIn[1]); Serial.print(" "); Serial.println(appIn[2]);
-        Serial.print("APP Map Out = "); Serial.print(appOut[0]); Serial.print(" "); Serial.print(appOut[1]); Serial.print(" "); Serial.println(appOut[2]);*/
-        Serial.print("TPS Error = "); Serial.println(TPSerror);
+        //Serial.print("APP Map In = "); Serial.print(appIn[0]); Serial.print(" "); Serial.print(appIn[1]); Serial.print(" "); Serial.println(appIn[2]);
+        //Serial.print("APP Map Out = "); Serial.print(appOut[0]); Serial.print(" "); Serial.print(appOut[1]); Serial.print(" "); Serial.println(appOut[2]);*/
+       /* Serial.print("TPS Error = "); Serial.println(TPSerror);
         Serial.print("TPS = "); Serial.println(inTPS);
         Serial.print("Expected TPS2  = "); Serial.println(expectTPS2);
         Serial.print("TPS2 = "); Serial.println(rawTPS2);
@@ -395,9 +392,9 @@ void loop() {
           Serial.print(tps2Out[2]);
           Serial.print(" ");
           Serial.print(tps2Out[3]);
-          Serial.println(" ");
+          Serial.println(" ");*/
       }
-      //Serial.print("Idle% = "); Serial.println(idleSetPoint);
+      //Serial.print("Idle = "); Serial.println(idleSetPoint);
       timeDiag = millis();
     }
     
@@ -438,222 +435,217 @@ void loop() {
       break;
       case 't':
       //Transient function that forces the TP to open at max rate, and close at a relatively fast rate to avoid slamming
-      if (inTPS < inAPP){ //opening
-            digitalWrite(HB_DIRECTION, 0);
-            analogWrite(HB_PWM,200);
-            //Serial.println("Open Transient");
+      if (inTPS < inAPP && abs(inTPS - inAPP) > 200){ //opening
+        digitalWrite(HB_DIRECTION, 0);
+        analogWrite(HB_PWM,200);
+        //Serial.println("Open Transient");
+      } else if(inTPS < inAPP) {
+        digitalWrite(HB_DIRECTION, 0);
+        analogWrite(HB_PWM,150);
+      }
+      else {
+        digitalWrite(HB_DIRECTION, 1); //closing
+          if ((inTPS < throttleRest -50)) {
+            analogWrite(HB_PWM, 20);
+          //Serial.println("Closing transient - slow");
           }
-        else {
-           digitalWrite(HB_DIRECTION, 1); //closing
-             if ((inTPS < throttleRest -50)) {
-              analogWrite(HB_PWM, 20);
-             //Serial.println("Closing transient - slow");
-             }
-             else{
-               analogWrite(HB_PWM, 170);
-               //Serial.println("Closing transient");
-             }    
+          else{
+            analogWrite(HB_PWM, 170);
+            //Serial.println("Closing transient");
+          }    
         }
         //Serial.println("Transient mode");
         break;
-        case 'i':
-           // throttlePID.SetSampleTime(1);
-          SetPoint = idleSetPoint;
-          if (inTPS < idleSetPoint){
-            throttlePID.SetTunings(1.1, .07, 0.0);
-            throttlePID.SetControllerDirection(DIRECT);
-            digitalWrite(HB_DIRECTION, 0);                //sets ETC Direction to forward
-            throttlePID.SetOutputLimits(5,60);
-            throttlePID.Compute();                            //compute PID based correction
-            analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction facttor with PID
-            //Serial.println("Idle opening");
-          }
-          else {
-           digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
-           /*throttlePID.SetTunings(1.4, 1, 0.7);
-           throttlePID.SetControllerDirection(REVERSE);
-           throttlePID.SetOutputLimits(20,120);
-           throttlePID.Compute();   */
-           if (abs(inTPS - idleSetPoint) < 5){
+      case 'i':
+        // throttlePID.SetSampleTime(1);
+        SetPoint = idleSetPoint;
+        if (inTPS < idleSetPoint){
+          throttlePID.SetTunings(1.1, .07, 0.0);
+          throttlePID.SetControllerDirection(DIRECT);
+          digitalWrite(HB_DIRECTION, 0);                //sets ETC Direction to forward
+          throttlePID.SetOutputLimits(5,100);
+          throttlePID.Compute();                            //compute PID based correction
+          analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction facttor with PID
+          //Serial.println("Idle opening");
+        }
+        else {
+          digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
+          /*throttlePID.SetTunings(1.4, 1, 0.7);
+          throttlePID.SetControllerDirection(REVERSE);
+          throttlePID.SetOutputLimits(20,120);
+          throttlePID.Compute();   */
+          if (abs(inTPS - idleSetPoint) < 5){
             analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
             //Serial.println("Idle backslow");
-           }
-           else{
-            analogWrite(HB_PWM,105);  //makes throttle go backward with open loop values
-            //Serial.println("Idle back");
-           }
-           //Serial.println("Idle closing");
-           //Serial.println(Output);
-          throttlePID.Compute();
           }
+          else{
+            analogWrite(HB_PWM,80);  //makes throttle go backward with open loop values
+            //Serial.println("Idle back");
+          }
+          //Serial.println("Idle closing");
+          //Serial.println(Output);
+          throttlePID.Compute();
+        }
         //Serial.println("Idle control");
         break;
-        case 's': // safetymodes
-          if (safetyMode == 1){ 
-            throttlePID.SetTunings(1.9, .07, 0.03);
-            SetPoint = constrain(SetPoint, 160, 980);
+      case 's': // safetymodes
+        if (safetyMode == 1){ 
+          throttlePID.SetTunings(1.9, .07, 0.03);
+          SetPoint = constrain(SetPoint, 160, 980);
             
-            if (inTPS < inAPP){
-              digitalWrite(HB_DIRECTION, 0);            //sets ETC Direction to forward
-              throttlePID.SetControllerDirection(DIRECT);
-              throttlePID.SetOutputLimits(20,180);
-              //Serial.print("PID Output = "); Serial.println(Output);
-              throttlePID.Compute();                    //compute PID based correction
-              analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction factor with PID
-              //Serial.println("Steady State Forward");
-            }
-            else {
-             digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
-             /*throttlePID.SetTunings(1.4, 1, 0.7);
-             throttlePID.SetControllerDirection(REVERSE);
-             throttlePID.SetOutputLimits(20,120);
-             throttlePID.Compute();   */
-             if (abs(inTPS - inAPP) < 5){
-              analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
-              //Serial.println("Idle backslow");
-             }
-             else{
-              analogWrite(HB_PWM,80);  //makes throttle go backward with open loop values
-              //Serial.println("Idle back");
-             }
-             throttlePID.Compute();                    //compute PID based correction
-  
-            }
-          }
-          else if (safetyMode == 2){
-            digitalWrite(HB_DIRECTION, 1);
-            analogWrite(HB_PWM,60);
+          if (inTPS < inAPP){
+            digitalWrite(HB_DIRECTION, 0);            //sets ETC Direction to forward
+            throttlePID.SetControllerDirection(DIRECT);
+            throttlePID.SetOutputLimits(20,180);
+            //Serial.print("PID Output = "); Serial.println(Output);
+            throttlePID.Compute();                    //compute PID based correction
+            analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction factor with PID
+            //Serial.println("Steady State Forward");
           }
           else {
-            digitalWrite(HB_DIRECTION, 1);
-            analogWrite(HB_PWM,0);
-            safetyCheck = false;
+            digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
+            /*throttlePID.SetTunings(1.4, 1, 0.7);
+            throttlePID.SetControllerDirection(REVERSE);
+            throttlePID.SetOutputLimits(20,120);
+            throttlePID.Compute();   */
+            if (abs(inTPS - inAPP) < 5){
+              analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
+              //Serial.println("Idle backslow");
+            }
+            else{
+              analogWrite(HB_PWM,80);  //makes throttle go backward with open loop values
+              //Serial.println("Idle back");
+            }
+            throttlePID.Compute();                    //compute PID based correction
+  
           }
-         break;
-        case 'k': //calibration mode
-          
-          switch(calMode){
-            case 1:
-              /*if(calSuccessCount == 0){
-                SetPoint = calLevel1;
-              }else if(calSuccessCount == 1 && calSuccessCountSec == 0){
-                SetPoint = calLevel2;
-              }*/
-              switch(calSuccessCountSec){
+        }
+        else if (safetyMode == 2){
+          digitalWrite(HB_DIRECTION, 1);
+          analogWrite(HB_PWM,60);
+        }
+        else {
+          digitalWrite(HB_DIRECTION, 1);
+          analogWrite(HB_PWM,0);
+          safetyCheck = false;
+        }
+        break;
+      case 'k': //calibration mode
+        switch(calMode){
+          case 1:
+            switch(calSuccessCountSec){
+            case 0:
+              switch(calSuccessCount){
                 case 0:
-                  switch(calSuccessCount){
-                    case 0:
-                      SetPoint = calLevel1;
-                      break;
-                    case 1:
-                      SetPoint = calLevel2;
-                      break;
-                  }
+                  SetPoint = calLevel1;
                   break;
-                  case 1:
-                    break;
-                  default:
-                    break;
+                case 1:
+                  SetPoint = calLevel2;
+                  break;
               }
+              break;
+            case 1:
+              break;
+            }
 
 
-              throttlePID.SetTunings(1.3, .07, 0.02);
-              if (abs(SetPoint - inTPS) > 40){
-                if (inTPS < SetPoint){ //opening
-                  digitalWrite(HB_DIRECTION, 0);
-                  analogWrite(HB_PWM,220);
-                  //Serial.println("Open Transient");
-                }
-                if(inTPS > SetPoint){
-                  digitalWrite(HB_DIRECTION, 1);
-                  analogWrite(HB_PWM,50);
-                }    
+            throttlePID.SetTunings(1.3, .07, 0.02);
+            if (abs(SetPoint - inTPS) > 40){
+              if (inTPS < SetPoint){ //opening
+                digitalWrite(HB_DIRECTION, 0);
+                analogWrite(HB_PWM,220);
+                //Serial.println("Open Transient");
+              }
+              if(inTPS > SetPoint){
+                digitalWrite(HB_DIRECTION, 1);
+                analogWrite(HB_PWM,50);
+              }     
               
-              } else if (inTPS < SetPoint){
-                  digitalWrite(HB_DIRECTION, 0);            //sets ETC Direction to forward
-                  throttlePID.SetControllerDirection(DIRECT);
-                  throttlePID.SetOutputLimits(20,230);
-                  throttlePID.Compute();                    //compute PID based correction
-                  analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction factor with PID
+            } else if (inTPS < SetPoint){
+              digitalWrite(HB_DIRECTION, 0);            //sets ETC Direction to forward
+              throttlePID.SetControllerDirection(DIRECT);
+              throttlePID.SetOutputLimits(20,230);
+              throttlePID.Compute();                    //compute PID based correction
+              analogWrite(HB_PWM,(Output));  //uses the base duty and adds a correction factor with PID
                   
-                }
-              else {
-                  digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
-                  /*throttlePID.SetTunings(1.4, 1, 0.7);
-                  throttlePID.SetControllerDirection(REVERSE);
-                  throttlePID.SetOutputLimits(20,120);
-                  throttlePID.Compute();   */
-                  if (abs(inTPS - SetPoint) < 5){
-                    analogWrite(HB_PWM,5);  //makes throttle go backward with open loop values
-                    //Serial.println("Idle backslow");
-                  }
-                  else{
-                    analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
-                    //Serial.println("Idle back");
-                  }
-                  throttlePID.Compute();                    //compute PID based correction
-
-                  }
-                  if(calSuccessCount == 0){
-                    if(inTPS == calLevel1){
-                      secondTPS2 = analogRead(POT_THROTTLE);
-                      secondOutTPS2 = analogRead(POT_THROTTLE2);
-                      Serial.print("Calibration success TPS: ");
-                      Serial.println(secondTPS2);
-                      Serial.print("Calibration success TPS2: ");
-                      Serial.println(secondOutTPS2);
-                      calSuccessCount = 1;
-                    }
-                  }else if(calSuccessCount == 1 && calSuccessCountSec == 0){
-                    if(inTPS == calLevel2){
-                      thirdTPS2 = analogRead(POT_THROTTLE);
-                      thirdOutTPS2 = analogRead(POT_THROTTLE2);
-                      Serial.print("Calibration success TPS: ");
-                      Serial.println(thirdTPS2);
-                      Serial.print("Calibration success TPS2: ");
-                      Serial.println(thirdOutTPS2);
-                      calSuccessCountSec = 1;
-                    }                  
-                  }else if(calSuccessCount == 1 && calSuccessCountSec == 1){
-                    calMode = 0;
-                    calSuccessCount = 0;
-                    calSuccessCountSec = 0;
-                  }
-                  break;
-                case 2:    
-                  if(rawAPP == calLevel1){ 
-                    secondAPP2 = analogRead(POT_PEDAL);
-                    secondOutAPP2 = analogRead(POT_PEDAL2);
-                    Serial.print("Calibration success APP: ");
-                    Serial.print(secondAPP2);
-                    Serial.print(" APP2: ");
-                    Serial.println(secondOutAPP2); 
-                    
-                    calSuccessCount = 1;
-                  
-                  }
-                  if(rawAPP == calLevel2){ 
-                    thirdAPP2 = analogRead(POT_PEDAL);
-                    thirdOutAPP2 = analogRead(POT_PEDAL2);
-                    Serial.print("Calibration success APP: ");
-                    Serial.print(thirdAPP2);
-                    Serial.print(" APP2: ");
-                    Serial.println(thirdOutAPP2);
-                    calSuccessCountSec = 1;
-                    
-                  }
-                  if(calSuccessCount == 1 && calSuccessCountSec == 1){
-                    calMode = 0;
-                    calSuccessCount = 0;
-                    calSuccessCountSec = 0;
-                  }
-                  break;
+            }
+            else {
+              digitalWrite(HB_DIRECTION, 1);                       //set ETC Direction Backward
+              /*throttlePID.SetTunings(1.4, 1, 0.7);
+              throttlePID.SetControllerDirection(REVERSE);
+              throttlePID.SetOutputLimits(20,120);
+              throttlePID.Compute();   */
+              if (abs(inTPS - SetPoint) < 5){
+                analogWrite(HB_PWM,5);  //makes throttle go backward with open loop values
+                //Serial.println("Idle backslow");
               }
+              else{
+                analogWrite(HB_PWM,20);  //makes throttle go backward with open loop values
+                //Serial.println("Idle back");
+              }
+              throttlePID.Compute();                    //compute PID based correction
+
+            }
+            if(calSuccessCount == 0){
+              if(inTPS == calLevel1){
+                secondTPS2 = analogRead(POT_THROTTLE);
+                secondOutTPS2 = analogRead(POT_THROTTLE2);
+                Serial.print("Calibration success TPS: ");
+                Serial.println(secondTPS2);
+                Serial.print("Calibration success TPS2: ");
+                Serial.println(secondOutTPS2);
+                calSuccessCount = 1;
+              }
+            }else if(calSuccessCount == 1 && calSuccessCountSec == 0){
+              if(inTPS == calLevel2){
+                thirdTPS2 = analogRead(POT_THROTTLE);
+                thirdOutTPS2 = analogRead(POT_THROTTLE2);
+                Serial.print("Calibration success TPS: ");
+                Serial.println(thirdTPS2);
+                Serial.print("Calibration success TPS2: ");
+                Serial.println(thirdOutTPS2);
+                calSuccessCountSec = 1;
+              }                  
+            }else if(calSuccessCount == 1 && calSuccessCountSec == 1){
+              calMode = 0;
+              calSuccessCount = 0;
+              calSuccessCountSec = 0;
+            }
+            break;
+          case 2:    
+            if(rawAPP == calLevel1){ 
+              secondAPP2 = analogRead(POT_PEDAL);
+              secondOutAPP2 = analogRead(POT_PEDAL2);
+              Serial.print("Calibration success APP: ");
+              Serial.print(secondAPP2);
+              Serial.print(" APP2: ");
+              Serial.println(secondOutAPP2); 
+                    
+              calSuccessCount = 1;
+                  
+            }
+            if(rawAPP == calLevel2){ 
+              thirdAPP2 = analogRead(POT_PEDAL);
+              thirdOutAPP2 = analogRead(POT_PEDAL2);
+              Serial.print("Calibration success APP: ");
+              Serial.print(thirdAPP2);
+              Serial.print(" APP2: ");
+              Serial.println(thirdOutAPP2);
+              calSuccessCountSec = 1;
+                    
+            }
+            if(calSuccessCount == 1 && calSuccessCountSec == 1){
+              calMode = 0;
+              calSuccessCount = 0;
+              calSuccessCountSec = 0;
+            }
+            break;
+          }
           break;
         default: //Assumes an error in the char assignation and closes the throttle
           digitalWrite(HB_DIRECTION, 1);
           analogWrite(HB_PWM,0);
-         break;
+          break;
     }
 }
 
@@ -842,20 +834,4 @@ void loadCalibration(){
   high = EEPROM.read(36);
   low = EEPROM.read(37);
   thirdOutTPS2 = word(high,low);
-}
-
-void idleRequestPWM(){
-  //Serial.println("INTERRUPT! ");
-  if (digitalRead(idlePWMPin)){
-    if (idleCount){
-      idlePWMtime = millis();
-      idleCount = false;
-    }
-  }
-  else{
-    if (!idleCount){
-      dutyCyclein = millis() - idlePWMtime;
-      idleCount = true;
-    }
-  }
 }
